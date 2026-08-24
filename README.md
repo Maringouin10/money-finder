@@ -62,13 +62,28 @@ docker compose run --rm scraper --min-group-size 2
 | `--strict` | avec `--commercial-only`, exclut aussi les licences non identifiées |
 | `--min-group-size` | taille minimale d'une famille (défaut 3) |
 | `--no-images` | ne pas télécharger les vignettes (rapport plus léger, images distantes) |
-| `--no-enrich` | ne pas ouvrir les pages détail : beaucoup plus rapide, mais licences et fichiers incomplets |
+| `--no-enrich` | ne pas ouvrir les pages détail : beaucoup plus rapide, mais licences, descriptions et fichiers incomplets (voir ci-dessous) |
 | `--demo` | rapport d'exemple hors-ligne |
 | `-v, --verbose` | journal détaillé |
 
 Sans Docker : `pip install -r requirements.txt && python -m scraper --demo`.
 
 ---
+
+## Enrichissement : à laisser activé
+
+La recherche seule ne suffit pas sur trois plateformes :
+
+| Plateforme | Manque dans les résultats de recherche |
+|---|---|
+| Thingiverse | **licence**, description, nombre de téléchargements |
+| MakerWorld | description, liste des fichiers |
+| Creality Cloud | description, tags, liste des fichiers |
+
+`ENRICH_DETAILS=true` (défaut) ouvre la page détail de chaque modèle pour les
+récupérer. Avec `--no-enrich`, tous les modèles Thingiverse ressortiraient
+« licence à vérifier » — un avertissement est affiché en haut du rapport dans ce
+cas.
 
 ## Clés d'API
 
@@ -135,31 +150,40 @@ scraper/
   demo_data.py     jeu d'exemple hors-ligne
   sources/
     base.py            contrat commun + lecture JSON tolérante
+    nuxt.py            décodage des payloads Nuxt/devalue (Creality Cloud)
     thingiverse.py     API officielle (token)
-    printables.py      GraphQL (3 variantes de requête)
-    makerworld.py      API web publique
-    crealitycloud.py   API web + repli sur le JSON embarqué dans la page
+    printables.py      GraphQL searchPrints2 / print(id)
+    makerworld.py      API web publique (select/design2)
+    crealitycloud.py   POST smart_search + page détail rendue côté serveur
 templates/         pages Jinja2 + CSS/JS du rapport
-tests/             tests unitaires (python -m unittest discover -s tests -t .)
-docs/              prompt de sondage des API
+tests/             tests unitaires + échantillons d'API réels
+docs/              apis.md (référence des endpoints), prompt-sonde-api.md
 ```
 
 ### Robustesse
 
-Les API de MakerWorld, Printables et Creality Cloud ne sont pas documentées et
-changent régulièrement. Les connecteurs :
+Les endpoints ont été relevés en conditions réelles (voir **`docs/apis.md`** :
+URLs, chemins des résultats, correspondance champ par champ, pièges connus).
+Comme ces API ne sont pas documentées et changent, les connecteurs :
 
-- essaient plusieurs endpoints / variantes de requête et gardent celle qui marche ;
-- lisent les réponses via `pick()` et `first_records()`, qui acceptent plusieurs
-  noms de champs possibles plutôt qu'un schéma figé ;
+- lisent d'abord le chemin validé (`records_at`), puis retombent sur une
+  recherche heuristique dans la réponse (`first_records`) ;
+- résolvent les champs via `pick()`, qui accepte plusieurs noms possibles ;
+- décodent le payload Nuxt *devalue* de Creality Cloud (`sources/nuxt.py`),
+  seule voie d'accès au détail en anonyme ;
 - n'interrompent jamais le run : une plateforme en panne produit un
   **avertissement affiché en haut du rapport**, les autres continuent.
+
+Des échantillons de réponses réelles sont figés dans `tests/fixtures.py` et
+rejoués par `tests/test_sources.py` : un changement de forme d'API casse les
+tests avant de fausser un rapport.
 
 Si une plateforme ne renvoie plus rien, lance
 `docker compose run --rm scraper -v -s makerworld -l 5` pour voir les erreurs,
 puis ajuste l'endpoint dans `.env` (voir les variables commentées dans
 `.env.example`). Le fichier `docs/prompt-sonde-api.md` contient un prompt prêt à
-l'emploi pour redécouvrir la forme exacte des API.
+l'emploi pour redécouvrir la forme exacte des API, et `docs/apis.md` sert de
+référence de ce qui a été validé la dernière fois.
 
 ---
 
@@ -169,8 +193,10 @@ l'emploi pour redécouvrir la forme exacte des API.
 python -m unittest discover -s tests -t .
 ```
 
-Couvre la normalisation des licences, la découverte des familles et la lecture
-tolérante des réponses JSON.
+27 tests : normalisation des licences (y compris les codes nus `BY-SA` de
+MakerWorld et `CXY-SL` de Creality), découverte des familles, lecture tolérante
+des réponses JSON, décodage devalue et mapping de chaque plateforme sur des
+échantillons de réponses réelles.
 
 ---
 

@@ -76,7 +76,7 @@ class Settings:
     thingiverse_api: str = "https://api.thingiverse.com"
     printables_api: str = "https://api.printables.com/graphql/"
     makerworld_api: str = "https://makerworld.com/api/v1"
-    crealitycloud_api: str = "https://api-cxy.crealitycloud.com"
+    crealitycloud_api: str = "https://www.crealitycloud.com"
     crealitycloud_web: str = "https://www.crealitycloud.com"
 
     @classmethod
@@ -101,6 +101,6 @@ class Settings:
             thingiverse_api=_env("THINGIVERSE_API", "https://api.thingiverse.com"),
             printables_api=_env("PRINTABLES_API", "https://api.printables.com/graphql/"),
             makerworld_api=_env("MAKERWORLD_API", "https://makerworld.com/api/v1"),
-            crealitycloud_api=_env("CREALITYCLOUD_API", "https://api-cxy.crealitycloud.com"),
+            crealitycloud_api=_env("CREALITYCLOUD_API", "https://www.crealitycloud.com"),
             crealitycloud_web=_env("CREALITYCLOUD_WEB", "https://www.crealitycloud.com"),
         )

@@ -15,6 +15,9 @@ class ThingiverseSource(Source):
     name = "thingiverse"
     label = "Thingiverse"
     requires_key = True
+    # Le hit de recherche ne contient ni licence, ni description, ni
+    # download_count : l'appel au détail est indispensable.
+    needs_enrich = True
 
     def available(self) -> tuple[bool, str]:
         if not self.settings.thingiverse_token:
@@ -64,10 +67,13 @@ class ThingiverseSource(Source):
             image=as_text(pick(hit, "preview_image", "thumbnail", "default_image.url")),
             creator=as_text(pick(hit, "creator.name", "creator.first_name")),
             creator_url=as_text(pick(hit, "creator.public_url")),
+            # absents du hit de recherche, remplis par enrich() :
             license_raw=as_text(pick(hit, "license")),
             likes=as_int(pick(hit, "like_count", "likes")),
-            downloads=as_int(pick(hit, "download_count", "collect_count")),
-            published_at=as_text(pick(hit, "added", "published"))[:10],
+            # `collect_count` compte les collections, pas les téléchargements :
+            # ne jamais s'en servir comme substitut.
+            downloads=as_int(pick(hit, "download_count")),
+            published_at=as_text(pick(hit, "added", "created_at", "published"))[:10],
             tags=[as_text(t) for t in (hit.get("tags") or []) if as_text(t)],
             keyword=keyword,
         )
@@ -83,19 +89,34 @@ class ThingiverseSource(Source):
             model.images = [as_text(pick(img, "url", "sizes.url"))
                             for img in (detail.get("images") or [])][:6]
             model.images = [i for i in model.images if i]
-            model.tags = model.tags or [as_text(t) for t in (detail.get("tags") or [])]
-            model.download_url = as_text(pick(detail, "zip_url"),
-                                         f"https://www.thingiverse.com/thing:{model.source_id}/zip")
+            model.tags = model.tags or [as_text(pick(t, "name")) for t in (detail.get("tags") or [])]
+            model.likes = as_int(pick(detail, "like_count"), model.likes)
+            model.downloads = as_int(pick(detail, "download_count"), model.downloads)
+            model.published_at = as_text(pick(detail, "added", "created_at"), model.published_at)[:10]
+            model.download_url = f"https://www.thingiverse.com/thing:{model.source_id}/zip"
         from ..licenses import normalize
         model.license = normalize(model.license_raw, self.name)
+
+        # zip_data.files donne des URLs CDN directes (sans authentification),
+        # à préférer à /download qui exige le token.
+        direct = {as_text(pick(f, "name")): as_text(pick(f, "url"))
+                  for f in (pick(detail, "zip_data.files", default=[]) or [])
+                  if isinstance(f, dict)} if isinstance(detail, dict) else {}
 
         try:
             files = self.http.get_json(f"{base}/things/{model.source_id}/files", headers=self._headers)
         except Exception as exc:  # noqa: BLE001 - les fichiers sont un bonus
             self.warn(f"fichiers indisponibles pour {model.source_id} ({exc})")
-            return
+            files = []
+
         for entry in files or []:
             name = as_text(pick(entry, "name", "title"))
-            url = as_text(pick(entry, "public_url", "download_url", "direct_url"))
+            # public_url est une page publique ; download_url exige le token.
+            url = direct.get(name) or as_text(pick(entry, "public_url", "direct_url"))
             if name and url:
                 model.files.append(ModelFile(name=name, url=url, size=as_int(pick(entry, "size"))))
+
+        if not model.files:
+            for name, url in direct.items():
+                if name and url:
+                    model.files.append(ModelFile(name=name, url=url))

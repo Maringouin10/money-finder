@@ -25,6 +25,9 @@ class Source(ABC):
     name: str = ""
     label: str = ""
     requires_key: bool = False
+    # True quand la recherche seule ne suffit pas (licence/description/fichiers
+    # ne sont disponibles que sur la page détail).
+    needs_enrich: bool = False
 
     def __init__(self, settings: Settings, http: Http) -> None:
         self.settings = settings
@@ -92,6 +95,22 @@ def as_text(value: Any, default: str = "") -> str:
     if isinstance(value, list):
         return ", ".join(filter(None, (as_text(v) for v in value)))
     return default
+
+
+def records_at(data: Any, *paths: str) -> list[dict]:
+    """Liste d'objets située à l'un des chemins donnés (chemin validé en premier).
+
+    À préférer à `first_records()` : une réponse contient souvent d'autres
+    listes (tags, catégories, suggestions) qui peuvent être plus longues que
+    la liste de résultats.
+    """
+    for path in paths:
+        value = pick(data, path)
+        if isinstance(value, list):
+            records = [v for v in value if isinstance(v, dict)]
+            if records:
+                return records
+    return []
 
 
 def first_records(data: Any, id_keys: tuple[str, ...], name_keys: tuple[str, ...]) -> list[dict]:

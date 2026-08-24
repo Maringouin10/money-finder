@@ -96,6 +96,21 @@ def normalize(raw: str | None, source: str = "") -> LicenseInfo:
         )
 
     # --- Licences propriétaires / fichiers standard ------------------------
+    # CXY-SL = Creality Standard License, observée sur Creality Cloud.
+    if _has(flat, "cxy", "cxy sl") or "creality standard" in flat:
+        return LicenseInfo(
+            raw=raw, code="CXY-SL", name="Creality Standard License", url="",
+            sellable=Sellable.NO.value, attribution=True, share_alike=False, no_derivatives=True,
+            note="Licence maison Creality : usage personnel, vente des impressions non autorisée.",
+        )
+
+    if "exclusive license" in flat or "makerworld exclusive" in flat:
+        return LicenseInfo(
+            raw=raw, code="EXCLUSIVE", name="Licence exclusive plateforme", url="",
+            sellable=Sellable.NO.value, attribution=True, share_alike=False, no_derivatives=True,
+            note="Modèle exclusif à la plateforme : diffusion et vente réservées à celle-ci.",
+        )
+
     proprietary = (
         "standard digital file" in flat
         or _has(flat, "sdfl", "sdl")
@@ -110,7 +125,11 @@ def normalize(raw: str | None, source: str = "") -> LicenseInfo:
         )
 
     # --- Creative Commons --------------------------------------------------
-    is_cc = "creative commons" in flat or re.search(r"(^| )cc( |-|$)", flat) is not None
+    # MakerWorld renvoie les codes nus : "BY", "BY-SA", "BY-NC-ND"...
+    bare_cc = bool(re.fullmatch(r"(cc )?by([ ](nc|nd|sa))*([ ]\d(\.\d)?)*", flat))
+    is_cc = ("creative commons" in flat
+             or re.search(r"(^| )cc( |-|$)", flat) is not None
+             or bare_cc)
     nc = _has(flat, "nc") or "non commercial" in flat or "noncommercial" in flat
     nd = _has(flat, "nd") or "no derivative" in flat or "no derivatives" in flat or "noderiv" in flat
     sa = _has(flat, "sa") or "share alike" in flat or "sharealike" in flat

@@ -20,6 +20,14 @@ def collect(settings: Settings, http: Http) -> tuple[list[Model], list[str]]:
     models: dict[str, Model] = {}
     warnings: list[str] = []
 
+    needy = [REGISTRY[n].label for n in settings.sources
+             if n in REGISTRY and REGISTRY[n].needs_enrich]
+    if needy and not settings.enrich:
+        warnings.append(
+            "ENRICH_DETAILS désactivé : licences, descriptions et fichiers sont "
+            f"incomplets pour {', '.join(needy)} (leur recherche ne les renvoie pas)."
+        )
+
     for name in settings.sources:
         cls = REGISTRY.get(name)
         if cls is None:
