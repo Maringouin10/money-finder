@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_card.html" import card %}
+{% block title %}Tous les modèles{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Tous les modèles trouvés</h1>
+  <div class="kpis">
+    <div class="kpi"><b>{{ data.models|length }}</b><span>modèles</span></div>
+    <div class="kpi ok"><b>{{ data.sellable_total }}</b><span>exploitables commercialement</span></div>
+    <div class="kpi"><b>{{ data.groups|length }}</b><span>familles détectées</span></div>
+    {% for label, count in data.by_source %}
+    <div class="kpi"><b>{{ count }}</b><span>{{ label }}</span></div>
+    {% endfor %}
+  </div>
+  <div class="legend">
+    {% for value, label, count in data.by_license %}
+    <span class="pill lic-{{ value }}">{{ label }} : {{ count }}</span>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="filters">
+  <input type="search" id="q" placeholder="Rechercher un nom, un auteur, un tag…">
+  <select id="f-sellable">
+    <option value="">Toutes les licences</option>
+    {% for value, label, count in data.by_license %}
+    <option value="{{ value }}">{{ label }} ({{ count }})</option>
+    {% endfor %}
+  </select>
+  <select id="f-source">
+    <option value="">Toutes les plateformes</option>
+    {% for label, count in data.by_source %}
+    <option value="{{ label }}">{{ label }} ({{ count }})</option>
+    {% endfor %}
+  </select>
+  <select id="f-group">
+    <option value="">Toutes les familles</option>
+    {% for g in data.groups %}
+    <option value="{{ g.slug }}">{{ g.label }} ({{ g.size }})</option>
+    {% endfor %}
+  </select>
+  <select id="sort">
+    <option value="downloads">Tri : téléchargements</option>
+    <option value="likes">Tri : likes</option>
+    <option value="title">Tri : nom</option>
+  </select>
+  <span id="count" class="count"></span>
+</section>
+
+<div class="grid" id="grid">
+  {% for m in data.models %}{{ card(m) }}{% endfor %}
+</div>
+{% if not data.models %}
+<p class="empty">Aucun modèle collecté. Vérifiez les clés d'API et les avertissements ci-dessus.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Modèles 3D vendables{% endblock %} — money-finder</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">money<span>-finder</span></div>
+  <nav>
+    <a href="index.html" class="{{ 'active' if page == 'index.html' }}">Tous les modèles</a>
+    <a href="groupes.html" class="{{ 'active' if page == 'groupes.html' }}">Par famille</a>
+    <a href="models.csv" download>CSV</a>
+    <a href="models.json" download>JSON</a>
+  </nav>
+  <div class="meta">{{ data.models|length }} modèles · {{ data.generated_at }}</div>
+</header>
+
+{% if data.demo %}
+<div class="banner demo">Mode démonstration : ces fiches sont des exemples locaux, pas des résultats de scraping réels.</div>
+{% endif %}
+{% if data.warnings %}
+<details class="banner warn">
+  <summary>{{ data.warnings|length }} avertissement(s) pendant la collecte</summary>
+  <ul>{% for w in data.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</details>
+{% endif %}
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+<footer>
+  Mots-clés : {{ data.keywords|join(', ') }} · Plateformes : {{ data.sources|join(', ') }}.
+  Les verdicts de licence sont une aide à la décision automatisée : vérifiez la page du modèle avant toute vente.
+</footer>
+<script src="assets/app.js"></script>
+</body>
+</html>

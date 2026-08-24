@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_card.html" import card %}
+{% block title %}Par famille{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Familles détectées automatiquement</h1>
+  <p class="lead">Les familles ci-dessous sont déduites des titres collectés : aucune liste n'est écrite en dur,
+  elles changent à chaque exécution selon ce qui est trouvé.</p>
+</section>
+
+<div class="layout">
+  <aside class="toc">
+    <input type="search" id="q-group" placeholder="Filtrer les familles…">
+    <ul>
+      {% for g in data.groups %}
+      <li><a href="#{{ g.slug }}">{{ g.label }} <b>{{ g.size }}</b></a></li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  <div class="groups">
+    {% for g in data.groups %}
+    <section class="group" id="{{ g.slug }}" data-label="{{ g.label|lower }}">
+      <header class="group-head">
+        {% if g.cover %}<img class="group-cover" src="{{ g.cover }}" alt="{{ g.label }}" loading="lazy">{% endif %}
+        <div>
+          <h2>{{ g.label }}</h2>
+          <p>{{ g.size }} modèle(s) · {{ g.sellable_count }} vendable(s) sans condition · {{ g.sources|join(', ') }}</p>
+        </div>
+      </header>
+      <div class="grid">
+        {% for m in g.models %}{{ card(m) }}{% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% macro card(m) %}
+<article class="card"
+         data-title="{{ m.title|lower }} {{ m.creator|lower }} {{ m.tags|join(' ')|lower }}"
+         data-source="{{ m.source }}"
+         data-sellable="{{ m.license.sellable }}"
+         data-downloads="{{ m.downloads }}"
+         data-likes="{{ m.likes }}"
+         data-group="{{ m.group_slug }}">
+  <a class="thumb" href="{{ m.url }}" target="_blank" rel="noopener">
+    {% if m.local_image or m.image %}
+      <img src="{{ m.local_image or m.image }}" alt="{{ m.title }}" loading="lazy">
+    {% else %}
+      <span class="noimg">pas d'image</span>
+    {% endif %}
+    <span class="badge source src-{{ m.source }}">{{ m.source_label }}</span>
+  </a>
+  <div class="body">
+    <h3><a href="{{ m.url }}" target="_blank" rel="noopener">{{ m.title }}</a></h3>
+    <div class="sub">
+      {% if m.creator %}<a href="{{ m.creator_url or m.url }}" target="_blank" rel="noopener">{{ m.creator }}</a>{% endif %}
+      {% if m.group %}<span class="chip">{{ m.group }}</span>{% endif %}
+    </div>
+    <p class="desc">{{ m.excerpt or "Pas de description fournie par la plateforme." }}</p>
+    <div class="lic lic-{{ m.license.sellable }}">
+      <strong>{{ m.license.label }}</strong>
+      <span class="code">{{ m.license.code }}</span>
+      {% if m.license.url %}<a href="{{ m.license.url }}" target="_blank" rel="noopener">texte</a>{% endif %}
+      <em>{{ m.license.note }}</em>
+      {% if m.license.raw and m.license.raw != m.license.name %}<span class="raw">brut : {{ m.license.raw }}</span>{% endif %}
+    </div>
+    <div class="files">
+      {% if m.files %}
+        {% for f in m.files[:6] %}
+          <a class="file" href="{{ f.url }}" target="_blank" rel="noopener">{{ f.name }}{% if f.size %} <span>{{ f.size|filesize }}</span>{% endif %}</a>
+        {% endfor %}
+        {% if m.files|length > 6 %}<span class="file more">+{{ m.files|length - 6 }} autres</span>{% endif %}
+      {% elif m.download_url %}
+        <a class="file" href="{{ m.download_url }}" target="_blank" rel="noopener">Télécharger les fichiers 3D</a>
+      {% else %}
+        <span class="file none">Fichiers via la page du modèle</span>
+      {% endif %}
+    </div>
+    <div class="stats">
+      <span title="téléchargements">⬇ {{ m.downloads|number }}</span>
+      <span title="likes">♥ {{ m.likes|number }}</span>
+      {% if m.published_at %}<span>{{ m.published_at }}</span>{% endif %}
+      {% if m.also_on %}<span class="dup">aussi sur {{ m.also_on|join(', ') }}</span>{% endif %}
+    </div>
+  </div>
+</article>
+{% endmacro %}

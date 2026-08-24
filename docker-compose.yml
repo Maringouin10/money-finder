@@ -1,0 +1,23 @@
+services:
+  # Lance la collecte puis écrit le rapport dans ./output
+  scraper:
+    build: .
+    image: money-finder
+    env_file:
+      - .env
+    volumes:
+      - ./output:/app/output
+    # surchargeable : docker compose run --rm scraper -k "infinity cube" -l 100
+    command: ["--commercial-only"]
+
+  # Sert le rapport sur http://localhost:8080
+  web:
+    image: money-finder
+    build: .
+    entrypoint: ["python", "-m", "http.server", "8080", "--directory", "/app/output"]
+    command: []
+    volumes:
+      - ./output:/app/output
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
