@@ -41,6 +41,25 @@
     apply();
   }
 
+  // bouton « Relancer » : ne marche que servi par scraper.serve
+  const rerun = document.getElementById('rerun');
+  if (rerun) {
+    rerun.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const label = rerun.textContent;
+      rerun.textContent = 'Lancement…';
+      try {
+        const resp = await fetch('_run', { method: 'POST' });
+        if (!resp.ok) throw new Error(resp.status);
+        location.href = '.';          // la page d'avancement prend le relais
+      } catch (err) {
+        rerun.textContent = label;
+        alert("Relance impossible depuis un fichier local.\n"
+              + "Ouvre le rapport via le service web : http://localhost:8081");
+      }
+    });
+  }
+
   // page « par famille » : filtre du sommaire
   const qg = document.getElementById('q-group');
   if (qg) {

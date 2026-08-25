@@ -92,6 +92,7 @@ class Settings:
             output_dir=Path(_env("OUTPUT_DIR", "output")),
             download_images=_env_bool("DOWNLOAD_IMAGES", True),
             enrich=_env_bool("ENRICH_DETAILS", True),
+            demo=_env_bool("DEMO", False),
             timeout=_env_float("REQUEST_TIMEOUT", 30.0),
             delay=_env_float("REQUEST_DELAY", 0.8),
             max_retries=_env_int("MAX_RETRIES", 3),

@@ -10,10 +10,13 @@ services:
     # surchargeable : docker compose run --rm scraper -k "infinity cube" -l 100
     command: ["--commercial-only"]
 
-  # Sert le rapport sur http://localhost:8081
+  # Sert le rapport sur http://localhost:8081 et lance la collecte tout seul
+  # au premier démarrage (puis toutes les REFRESH_HOURS heures si défini).
   web:
     image: money-finder
     build: .
+    env_file:
+      - .env
     entrypoint: ["python", "-m", "scraper.serve"]
     command: ["--port", "8081", "--directory", "/app/output"]
     volumes:

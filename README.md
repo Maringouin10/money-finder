@@ -17,16 +17,24 @@ Exports bruts également générés : `models.json` et `models.csv` (ouvrable da
 ## Démarrage rapide (Docker)
 
 ```bash
-cp .env.example .env      # puis colle ton token Thingiverse dedans
-docker compose build
-docker compose run --rm scraper                 # lance la collecte
-docker compose up -d web                        # rapport sur http://localhost:8081
+cp .env.example .env                  # puis colle ton token Thingiverse dedans
+docker compose up -d --build web      # → http://localhost:8081
 ```
 
-Le rapport atterrit dans `./output/` (monté en volume, donc conservé entre les runs).
-Le service `web` sert ce dossier ; tant que la collecte n'a rien écrit, il
-affiche une page expliquant quoi lancer. Pour changer le port côté hôte :
-`WEB_PORT=9000 docker compose up -d web`.
+C'est tout : au premier démarrage, le service `web` **lance la collecte tout
+seul**. La page affiche l'avancement en direct (journal des plateformes
+interrogées) et bascule sur le rapport dès qu'il est prêt.
+
+Le rapport atterrit dans `./output/` (monté en volume, donc conservé entre les
+runs). Ensuite :
+
+- bouton **« Relancer la collecte »** sur la page d'avancement, ou
+  `curl -X POST localhost:8081/_run` ;
+- `REFRESH_HOURS=12` dans `.env` pour une collecte automatique toutes les 12 h ;
+- `WEB_PORT=9000` pour changer le port côté hôte.
+
+Le service `scraper` reste disponible pour lancer une collecte à la demande
+avec des options précises (voir plus bas).
 
 ### Voir le rendu sans clé ni réseau
 
@@ -35,7 +43,8 @@ docker compose run --rm scraper --demo
 ```
 
 Génère un rapport d'exemple avec des fiches fictives : utile pour vérifier la
-mise en page et le regroupement automatique.
+mise en page et le regroupement automatique. (`DEMO=true` dans `.env` fait la
+même chose pour les collectes automatiques du service `web`.)
 
 ---
 
@@ -151,7 +160,7 @@ scraper/
   report.py        rendu HTML/JSON/CSV
   models.py        structures communes
   demo_data.py     jeu d'exemple hors-ligne
-  serve.py         serveur du rapport (service web)
+  serve.py         serveur du rapport + collecte automatique (service web)
   sources/
     base.py            contrat commun + lecture JSON tolérante
     nuxt.py            décodage des payloads Nuxt/devalue (Creality Cloud)
@@ -193,11 +202,17 @@ référence de ce qui a été validé la dernière fois.
 
 ## En cas de problème
 
-**La page 8081 affiche « Directory listing for / » ou « Aucun rapport »**
-→ `output/` est vide : la collecte n'a pas écrit de rapport. Lance
-`docker compose run --rm scraper --demo` : si le rapport de démonstration
-apparaît, le problème vient de la collecte réseau (clé, endpoints), pas du
-serveur. Sinon, vérifie que `.env` existe et relance avec `-v`.
+**La page 8081 reste sur « Collecte en cours »**
+→ c'est normal au premier démarrage : le journal affiché en direct indique la
+plateforme en cours. Une collecte complète prend plusieurs minutes (une requête
+détail par modèle, throttling à `REQUEST_DELAY`). Si le journal montre des
+erreurs réseau à répétition, elles seront reprises en avertissements dans le
+rapport final.
+
+**Le rapport est généré mais vide**
+→ regarde les avertissements en haut de page : chaque plateforme en échec y est
+listée avec sa raison. `DEMO=true` dans `.env` permet de vérifier que
+l'affichage, lui, fonctionne.
 
 **Toutes les licences sont « à vérifier »**
 → `ENRICH_DETAILS` est à `false`, ou le token Thingiverse est absent/invalide.
@@ -206,10 +221,6 @@ serveur. Sinon, vérifie que `.env` existe et relance avec `-v`.
 → `docker compose run --rm scraper -v -s makerworld -l 5` affiche l'erreur
 exacte ; `docs/apis.md` liste les endpoints validés et `docs/prompt-sonde-api.md`
 permet de les re-sonder.
-
-**Le rapport est vide alors que la collecte a tourné**
-→ regarde les avertissements en haut du rapport : chaque plateforme en échec y
-est listée avec sa raison.
 
 ## Tests
 
