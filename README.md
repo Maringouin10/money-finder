@@ -20,7 +20,7 @@ Exports bruts également générés : `models.json` et `models.csv` (ouvrable da
 cp .env.example .env      # puis colle ton token Thingiverse dedans
 docker compose build
 docker compose run --rm scraper                 # lance la collecte
-docker compose up -d web                        # rapport sur http://localhost:8080
+docker compose up -d web                        # rapport sur http://localhost:8081
 ```
 
 Le rapport atterrit dans `./output/` (monté en volume, donc conservé entre les runs).

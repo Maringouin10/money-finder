@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  • page « tous les modèles »  : {index}")
     print(f"  • page « par famille »       : {written.get('groupes.html')}")
     print(f"  • exports                    : {written.get('models.csv')} / {written.get('models.json')}")
-    print("\nAffichage : docker compose up web  →  http://localhost:8080")
+    print("\nAffichage : docker compose up web  →  http://localhost:8081")
     return 0
 
 

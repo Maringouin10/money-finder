@@ -10,14 +10,14 @@ services:
     # surchargeable : docker compose run --rm scraper -k "infinity cube" -l 100
     command: ["--commercial-only"]
 
-  # Sert le rapport sur http://localhost:8080
+  # Sert le rapport sur http://localhost:8081
   web:
     image: money-finder
     build: .
-    entrypoint: ["python", "-m", "http.server", "8080", "--directory", "/app/output"]
+    entrypoint: ["python", "-m", "http.server", "8081", "--directory", "/app/output"]
     command: []
     volumes:
       - ./output:/app/output
     ports:
-      - "8080:8080"
+      - "8081:8081"
     restart: unless-stopped
