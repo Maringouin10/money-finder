@@ -24,6 +24,9 @@ docker compose up -d web                        # rapport sur http://localhost:8
 ```
 
 Le rapport atterrit dans `./output/` (monté en volume, donc conservé entre les runs).
+Le service `web` sert ce dossier ; tant que la collecte n'a rien écrit, il
+affiche une page expliquant quoi lancer. Pour changer le port côté hôte :
+`WEB_PORT=9000 docker compose up -d web`.
 
 ### Voir le rendu sans clé ni réseau
 
@@ -148,6 +151,7 @@ scraper/
   report.py        rendu HTML/JSON/CSV
   models.py        structures communes
   demo_data.py     jeu d'exemple hors-ligne
+  serve.py         serveur du rapport (service web)
   sources/
     base.py            contrat commun + lecture JSON tolérante
     nuxt.py            décodage des payloads Nuxt/devalue (Creality Cloud)
@@ -186,6 +190,26 @@ l'emploi pour redécouvrir la forme exacte des API, et `docs/apis.md` sert de
 référence de ce qui a été validé la dernière fois.
 
 ---
+
+## En cas de problème
+
+**La page 8081 affiche « Directory listing for / » ou « Aucun rapport »**
+→ `output/` est vide : la collecte n'a pas écrit de rapport. Lance
+`docker compose run --rm scraper --demo` : si le rapport de démonstration
+apparaît, le problème vient de la collecte réseau (clé, endpoints), pas du
+serveur. Sinon, vérifie que `.env` existe et relance avec `-v`.
+
+**Toutes les licences sont « à vérifier »**
+→ `ENRICH_DETAILS` est à `false`, ou le token Thingiverse est absent/invalide.
+
+**Une plateforme ne renvoie plus rien**
+→ `docker compose run --rm scraper -v -s makerworld -l 5` affiche l'erreur
+exacte ; `docs/apis.md` liste les endpoints validés et `docs/prompt-sonde-api.md`
+permet de les re-sonder.
+
+**Le rapport est vide alors que la collecte a tourné**
+→ regarde les avertissements en haut du rapport : chaque plateforme en échec y
+est listée avec sa raison.
 
 ## Tests
 

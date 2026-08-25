@@ -14,10 +14,10 @@ services:
   web:
     image: money-finder
     build: .
-    entrypoint: ["python", "-m", "http.server", "8081", "--directory", "/app/output"]
-    command: []
+    entrypoint: ["python", "-m", "scraper.serve"]
+    command: ["--port", "8081", "--directory", "/app/output"]
     volumes:
       - ./output:/app/output
     ports:
-      - "8081:8081"
+      - "${WEB_PORT:-8081}:8081"
     restart: unless-stopped
