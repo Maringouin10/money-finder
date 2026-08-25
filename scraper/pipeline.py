@@ -34,6 +34,7 @@ def collect(settings: Settings, http: Http) -> tuple[list[Model], list[str]]:
             warnings.append(f"source inconnue ignorée : {name}")
             continue
         source = cls(settings, http)
+        http.set_pace(max(settings.delay, source.min_delay))
         ok, reason = source.available()
         if not ok:
             log.warning("[%s] désactivée : %s", name, reason)
@@ -64,6 +65,13 @@ def collect(settings: Settings, http: Http) -> tuple[list[Model], list[str]]:
                 if index % 25 == 0:
                     log.info("[%s] détails récupérés : %s/%s", name, index, len(new_models))
         log.info("[%s] terminé : %s modèles", name, len(models) - found_before)
+        if http.throttled:
+            warnings.append(
+                f"{source.label} : {http.throttled} refus pour excès de requêtes (429/503). "
+                f"Le rythme a été ralenti automatiquement à {http.delay:.1f} s. "
+                "Réduire LIMIT_PER_KEYWORD ou augmenter REQUEST_DELAY pour les éviter."
+            )
+            http.throttled = 0
         warnings.extend(f"{source.label} : {w}" for w in source.warnings[:10])
 
     return list(models.values()), warnings
@@ -89,7 +97,8 @@ def run(settings: Settings) -> dict[str, Path]:
     else:
         http = Http(user_agent=settings.user_agent, timeout=settings.timeout,
                     delay=settings.delay, max_retries=settings.max_retries,
-                    debug=settings.debug)
+                    debug=settings.debug, retry_base=settings.retry_base,
+                    max_delay=settings.max_delay)
         models, warnings = collect(settings, http)
 
     models = filter_models(models, settings)

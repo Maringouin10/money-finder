@@ -28,6 +28,8 @@ class Source(ABC):
     # True quand la recherche seule ne suffit pas (licence/description/fichiers
     # ne sont disponibles que sur la page détail).
     needs_enrich: bool = False
+    # Rythme minimal imposé par la plateforme, en secondes entre deux requêtes.
+    min_delay: float = 0.0
 
     def __init__(self, settings: Settings, http: Http) -> None:
         self.settings = settings

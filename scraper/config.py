@@ -67,12 +67,17 @@ class Settings:
     # --- réseau ----------------------------------------------------------
     timeout: float = 30.0
     delay: float = 0.8
+    max_delay: float = 8.0
+    retry_base: float = 2.0
     max_retries: int = 3
     user_agent: str = DEFAULT_UA
     debug: bool = False
 
     # --- clés / endpoints ------------------------------------------------
     thingiverse_token: str = ""
+    # Appeler /things/{id}/files pour récupérer la taille des fichiers :
+    # double le nombre de requêtes (quota 429), désactivé par défaut.
+    thingiverse_fetch_files: bool = False
     thingiverse_api: str = "https://api.thingiverse.com"
     printables_api: str = "https://api.printables.com/graphql/"
     makerworld_api: str = "https://makerworld.com/api/v1"
@@ -95,10 +100,13 @@ class Settings:
             demo=_env_bool("DEMO", False),
             timeout=_env_float("REQUEST_TIMEOUT", 30.0),
             delay=_env_float("REQUEST_DELAY", 0.8),
+            max_delay=_env_float("MAX_REQUEST_DELAY", 8.0),
+            retry_base=_env_float("RETRY_BASE", 2.0),
             max_retries=_env_int("MAX_RETRIES", 3),
             user_agent=_env("USER_AGENT", DEFAULT_UA),
             debug=_env_bool("DEBUG", False),
             thingiverse_token=_env("THINGIVERSE_TOKEN") or _env("THINGIVERSE_API_KEY"),
+            thingiverse_fetch_files=_env_bool("THINGIVERSE_FETCH_FILES", False),
             thingiverse_api=_env("THINGIVERSE_API", "https://api.thingiverse.com"),
             printables_api=_env("PRINTABLES_API", "https://api.printables.com/graphql/"),
             makerworld_api=_env("MAKERWORLD_API", "https://makerworld.com/api/v1"),

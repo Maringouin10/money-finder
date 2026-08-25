@@ -198,7 +198,7 @@ class TestThingiverse(unittest.TestCase):
         self.assertEqual(m.license.sellable, "unknown")  # licence absente du hit
 
     def test_enrich_fills_license_downloads_and_direct_files(self):
-        source, _ = self._source()
+        source, http = self._source()
         model = source.search("fidget", 1)[0]
         source.enrich(model)
 
@@ -207,9 +207,24 @@ class TestThingiverse(unittest.TestCase):
         self.assertEqual(model.downloads, 88583)
         self.assertEqual(model.tags, ["fidget"])
         # URL CDN directe issue de zip_data, pas le /download authentifié
+        self.assertEqual([f.name for f in model.files],
+                         ["mathgrrl_fidgetstar.scad", "fidget_snub_standing_15_48.stl"])
         self.assertEqual(model.files[0].url,
                          "https://cdn.thingiverse.com/assets/mathgrrl_fidgetstar.scad")
-        self.assertEqual(model.files[0].size, 13547)
+        # zip_data suffit : pas d'appel /files (économie de quota 429)
+        self.assertNotIn("/files", "".join(url for _, url, _ in http.calls))
+
+    def test_files_endpoint_only_when_explicitly_demanded(self):
+        http = FakeHttp(get_json={"/search/": fx.THINGIVERSE_SEARCH,
+                                  "/files": fx.THINGIVERSE_FILES,
+                                  "/things/929504": fx.THINGIVERSE_DETAIL})
+        source = ThingiverseSource(
+            settings(thingiverse_token="x", thingiverse_fetch_files=True), http)
+        model = source.search("fidget", 1)[0]
+        source.enrich(model)
+
+        self.assertIn("/files", "".join(url for _, url, _ in http.calls))
+        self.assertEqual(model.files[0].size, 13547)     # taille via /files
 
 
 if __name__ == "__main__":

@@ -18,6 +18,8 @@ class ThingiverseSource(Source):
     # Le hit de recherche ne contient ni licence, ni description, ni
     # download_count : l'appel au détail est indispensable.
     needs_enrich = True
+    # L'API limite le débit (429) : ~1 requête par seconde maximum.
+    min_delay = 1.1
 
     def available(self) -> tuple[bool, str]:
         if not self.settings.thingiverse_token:
@@ -103,11 +105,16 @@ class ThingiverseSource(Source):
                   for f in (pick(detail, "zip_data.files", default=[]) or [])
                   if isinstance(f, dict)} if isinstance(detail, dict) else {}
 
-        try:
-            files = self.http.get_json(f"{base}/things/{model.source_id}/files", headers=self._headers)
-        except Exception as exc:  # noqa: BLE001 - les fichiers sont un bonus
-            self.warn(f"fichiers indisponibles pour {model.source_id} ({exc})")
-            files = []
+        # zip_data suffit dans la majorité des cas : on évite alors un second
+        # appel par modèle, qui double la consommation du quota (429).
+        files: list = []
+        if not direct or self.settings.thingiverse_fetch_files:
+            try:
+                files = self.http.get_json(f"{base}/things/{model.source_id}/files",
+                                           headers=self._headers)
+            except Exception as exc:  # noqa: BLE001 - les fichiers sont un bonus
+                self.warn(f"fichiers indisponibles pour {model.source_id} ({exc})")
+                files = []
 
         for entry in files or []:
             name = as_text(pick(entry, "name", "title"))

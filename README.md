@@ -200,6 +200,26 @@ référence de ce qui a été validé la dernière fois.
 
 ---
 
+## Débit et quotas
+
+Thingiverse limite le nombre de requêtes et répond `429` au-delà (avec un
+`Retry-After: 0` inutilisable). Le client s'adapte :
+
+- rythme minimal de **1,1 s** entre deux requêtes pour Thingiverse
+  (`REQUEST_DELAY` sert de plancher pour les autres plateformes) ;
+- backoff exponentiel réel entre les tentatives (`RETRY_BASE`, 2 s → 4 s → 8 s) ;
+- **ralentissement automatique** à chaque `429`/`503`, jusqu'à `MAX_REQUEST_DELAY`,
+  puis retour progressif au rythme normal ;
+- un seul appel détail par modèle Thingiverse : la liste des fichiers est lue
+  dans `zip_data` plutôt que via `/files` (mettre `THINGIVERSE_FETCH_FILES=true`
+  si tu veux la taille des fichiers, au prix du double de requêtes) ;
+- le nombre de 429 rencontrés est reporté en avertissement dans le rapport.
+
+Si les 429 restent nombreux, le volume demandé est simplement trop élevé :
+baisse `LIMIT_PER_KEYWORD`, réduis la liste `KEYWORDS`, ou monte `REQUEST_DELAY`.
+Ordre de grandeur : `LIMIT_PER_KEYWORD=60` avec 5 mots-clés = jusqu'à 300
+modèles par plateforme, soit ~6 min rien que pour Thingiverse.
+
 ## En cas de problème
 
 **La page 8081 reste sur « Collecte en cours »**
@@ -208,6 +228,10 @@ plateforme en cours. Une collecte complète prend plusieurs minutes (une requêt
 détail par modèle, throttling à `REQUEST_DELAY`). Si le journal montre des
 erreurs réseau à répétition, elles seront reprises en avertissements dans le
 rapport final.
+
+**Le journal est rempli de « HTTP 429 »**
+→ quota de la plateforme atteint. Le client ralentit tout seul et continue ;
+voir « Débit et quotas » ci-dessus pour réduire le volume demandé.
 
 **Le rapport est généré mais vide**
 → regarde les avertissements en haut de page : chaque plateforme en échec y est
