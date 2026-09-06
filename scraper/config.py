@@ -8,6 +8,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .keyword_categories import all_keywords
+
 ALL_SOURCES = ["thingiverse", "printables", "makerworld", "crealitycloud"]
 
 DEFAULT_UA = (
@@ -51,15 +53,7 @@ def _env_list(name: str, default: list[str]) -> list[str]:
 @dataclass
 class Settings:
     # --- recherche -------------------------------------------------------
-    keywords: list[str] = field(
-        default_factory=lambda: [
-            "fidget toy",
-            "fidget toys",
-            "articulated animal",
-            "desk accessory",
-            "personalized",
-        ]
-    )
+    keywords: list[str] = field(default_factory=all_keywords)
     sources: list[str] = field(default_factory=lambda: list(ALL_SOURCES))
     limit_per_keyword: int = 60
     commercial_only: bool = False
@@ -96,16 +90,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         load_dotenv()
         return cls(
-            keywords=_env_list(
-                "KEYWORDS",
-                [
-                    "fidget toy",
-                    "fidget toys",
-                    "articulated animal",
-                    "desk accessory",
-                    "personalized",
-                ],
-            ),
+            keywords=_env_list("KEYWORDS", all_keywords()),
             sources=[s.lower() for s in _env_list("SOURCES", ALL_SOURCES)],
             limit_per_keyword=_env_int("LIMIT_PER_KEYWORD", 60),
             commercial_only=_env_bool("COMMERCIAL_ONLY", False),

@@ -22,7 +22,10 @@ docker compose up -d --build web      # → http://localhost:8081
 ```
 
 C'est tout : aucune collecte n'est lancée au démarrage. La page d'accueil
-affiche **toujours** un formulaire pour choisir les **mots-clés** et les
+affiche **toujours** un formulaire pour choisir les **mots-clés** — regroupés
+par famille (**Fidget toys**, **Animaux articulés**, **Accessoires de
+bureau**, **Personnalisé**, définies dans `scraper/keyword_categories.py`) :
+une case coche toute la famille, ou affine mot-clé par mot-clé — et les
 **plateformes**, avec un bouton **« Démarrer la collecte »**. Une fois lancée,
 la même page montre les modèles trouvés **au fur et à mesure** (vignette,
 titre, plateforme, verdict de licence) et bascule sur le rapport complet dès

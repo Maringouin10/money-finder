@@ -30,6 +30,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .config import ALL_SOURCES, Settings
+from .keyword_categories import KEYWORD_CATEGORIES
 
 log = logging.getLogger("money-finder.serve")
 
@@ -82,6 +83,9 @@ class Collector:
             if self.started_at else 0,
             "log": list(self.buffer.lines)[-40:],
             "keywords": self.settings.keywords,
+            "categories": [
+                {"name": name, "keywords": kws} for name, kws in KEYWORD_CATEGORIES
+            ],
             "sources": self.settings.sources,
             "all_sources": ALL_SOURCES,
             "limit_per_keyword": self.settings.limit_per_keyword,
@@ -192,6 +196,12 @@ STATUS_PAGE = """<!doctype html>
    border:1px solid #2a3340;border-radius:20px;padding:6px 12px;font-size:13.5px;
    cursor:pointer;user-select:none}
  .chip input{margin:0}
+ .cat-group{border:1px solid #2a3340;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+ .cat-head{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;
+   cursor:pointer;user-select:none}
+ .cat-head input{margin:0}
+ .cat-count{color:#9aa7b4;font-weight:400;font-size:12.5px}
+ .cat-kws{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;padding-left:24px}
  input[type=text],input[type=number]{background:#0d1117;border:1px solid #2a3340;
    color:#e6edf3;border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit}
  .count{color:#9aa7b4;font-size:13px;margin:10px 0 0}
@@ -219,8 +229,9 @@ STATUS_PAGE = """<!doctype html>
   <h1>Nouvelle collecte</h1>
   <p>Choisis les mots-clés et les plateformes à interroger, puis démarre la collecte.</p>
   <div class="field">
-    <label>Mots-clés</label>
-    <div class="chips" id="kwChips"></div>
+    <label>Mots-clés — coche une famille entière, ou affine mot-clé par mot-clé</label>
+    <div id="kwGroups"></div>
+    <div class="chips" id="customChips"></div>
     <div class="row">
       <input type="text" id="kwNew" placeholder="ajouter un mot-clé…">
       <button type="button" id="kwAdd">Ajouter</button>
@@ -257,34 +268,69 @@ STATUS_PAGE = """<!doctype html>
 <script>
 let wasRunning = false;
 let initialized = false;
-let kwList = [];
+let categories = [];      // [{name, keywords: [{name, checked}]}]
+let customKeywords = [];  // mots-clés ajoutés à la main, hors familles
 let srcList = [];
 
+function addKwCheckbox(container, kw, onChange) {
+  const chip = document.createElement('label');
+  chip.className = 'chip';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = kw.checked;
+  cb.addEventListener('change', () => onChange(cb.checked));
+  chip.appendChild(cb);
+  chip.appendChild(document.createTextNode(' ' + kw.name));
+  container.appendChild(chip);
+}
+
 function renderChips() {
-  const kwChips = document.getElementById('kwChips');
-  kwChips.innerHTML = '';
-  kwList.forEach((kw, i) => {
-    const label = document.createElement('label');
-    label.className = 'chip';
-    label.innerHTML = '<input type="checkbox" data-i="' + i + '"' +
-      (kw.checked ? ' checked' : '') + '> ' + kw.name;
-    label.querySelector('input').addEventListener('change', (e) => {
-      kwList[i].checked = e.target.checked;
+  const kwGroups = document.getElementById('kwGroups');
+  kwGroups.innerHTML = '';
+  categories.forEach((cat) => {
+    const total = cat.keywords.length;
+    const checkedCount = cat.keywords.filter(k => k.checked).length;
+
+    const group = document.createElement('div');
+    group.className = 'cat-group';
+
+    const head = document.createElement('label');
+    head.className = 'cat-head';
+    const catCb = document.createElement('input');
+    catCb.type = 'checkbox';
+    catCb.checked = checkedCount > 0;
+    catCb.indeterminate = checkedCount > 0 && checkedCount < total;
+    catCb.addEventListener('change', () => {
+      cat.keywords.forEach(k => { k.checked = catCb.checked; });
+      renderChips();
     });
-    kwChips.appendChild(label);
+    head.appendChild(catCb);
+    head.appendChild(document.createTextNode(' ' + cat.name));
+    const countSpan = document.createElement('span');
+    countSpan.className = 'cat-count';
+    countSpan.textContent = ' (' + checkedCount + '/' + total + ')';
+    head.appendChild(countSpan);
+    group.appendChild(head);
+
+    const kwRow = document.createElement('div');
+    kwRow.className = 'cat-kws';
+    cat.keywords.forEach((kw) => {
+      addKwCheckbox(kwRow, kw, (checked) => { kw.checked = checked; renderChips(); });
+    });
+    group.appendChild(kwRow);
+    kwGroups.appendChild(group);
+  });
+
+  const customChips = document.getElementById('customChips');
+  customChips.innerHTML = '';
+  customKeywords.forEach((kw) => {
+    addKwCheckbox(customChips, kw, (checked) => { kw.checked = checked; });
   });
 
   const srcChips = document.getElementById('srcChips');
   srcChips.innerHTML = '';
-  srcList.forEach((src, i) => {
-    const label = document.createElement('label');
-    label.className = 'chip';
-    label.innerHTML = '<input type="checkbox" data-i="' + i + '"' +
-      (src.checked ? ' checked' : '') + '> ' + src.name;
-    label.querySelector('input').addEventListener('change', (e) => {
-      srcList[i].checked = e.target.checked;
-    });
-    srcChips.appendChild(label);
+  srcList.forEach((src) => {
+    addKwCheckbox(srcChips, src, (checked) => { src.checked = checked; });
   });
 }
 
@@ -342,7 +388,15 @@ async function tick() {
   try {
     const s = await (await fetch('_status', {cache: 'no-store'})).json();
     if (!initialized) {
-      kwList = s.keywords.map(k => ({name: k, checked: true}));
+      const selected = new Set(s.keywords);
+      categories = s.categories.map(cat => ({
+        name: cat.name,
+        keywords: cat.keywords.map(k => ({name: k, checked: selected.has(k)})),
+      }));
+      const inCategory = new Set(s.categories.flatMap(cat => cat.keywords));
+      customKeywords = s.keywords
+        .filter(k => !inCategory.has(k))
+        .map(k => ({name: k, checked: true}));
       srcList = s.all_sources.map(src => ({name: src, checked: s.sources.includes(src)}));
       document.getElementById('limit').value = s.limit_per_keyword;
       renderChips();
@@ -385,14 +439,17 @@ async function tick() {
 document.getElementById('kwAdd').addEventListener('click', () => {
   const input = document.getElementById('kwNew');
   const val = input.value.trim();
-  if (val) { kwList.push({name: val, checked: true}); input.value = ''; renderChips(); }
+  if (val) { customKeywords.push({name: val, checked: true}); input.value = ''; renderChips(); }
 });
 document.getElementById('kwNew').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); document.getElementById('kwAdd').click(); }
 });
 
 document.getElementById('start').addEventListener('click', async () => {
-  const keywords = kwList.filter(k => k.checked).map(k => k.name);
+  const keywords = [
+    ...categories.flatMap(cat => cat.keywords.filter(k => k.checked).map(k => k.name)),
+    ...customKeywords.filter(k => k.checked).map(k => k.name),
+  ];
   const sources = srcList.filter(s => s.checked).map(s => s.name);
   const limit = parseInt(document.getElementById('limit').value, 10);
   if (!keywords.length) { alert('Choisis au moins un mot-clé.'); return; }
