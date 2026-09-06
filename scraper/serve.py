@@ -1,14 +1,16 @@
-"""Serveur du rapport avec collecte automatique (service `web`).
+"""Serveur du rapport avec collecte à la demande (service `web`).
 
-Au démarrage, si aucun rapport n'existe, la collecte est lancée toute seule
-dans un thread. Tant qu'elle tourne, la racine affiche une page d'avancement
-qui se rafraîchit et bascule sur le rapport dès qu'il est prêt.
+Au démarrage, aucune collecte n'est lancée : la racine affiche une page de
+configuration (mots-clés, plateformes, limite) avec un bouton « Démarrer la
+collecte ». Une fois lancée, la même page affiche l'avancement en direct et
+bascule sur le rapport dès qu'il est prêt.
 
 Endpoints :
-  GET  /            rapport, ou page d'avancement si une collecte est en cours
+  GET  /            rapport, ou page de configuration/avancement sinon
   GET  /index.html  toujours le rapport tel quel (même pendant une collecte)
   GET  /_status     état JSON {running, done, has_report, log, ...}
-  POST /_run        relance une collecte (ignorée si une est déjà en cours)
+  POST /_run        démarre une collecte (ignorée si une est déjà en cours),
+                     avec un corps JSON optionnel {keywords, sources, limit}
 """
 
 from __future__ import annotations
@@ -20,11 +22,12 @@ import os
 import threading
 import time
 from collections import deque
+from dataclasses import replace
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .config import Settings
+from .config import ALL_SOURCES, Settings
 
 log = logging.getLogger("money-finder.serve")
 
@@ -72,14 +75,25 @@ class Collector:
             "elapsed": int((self.finished_at or time.time()) - self.started_at)
             if self.started_at else 0,
             "log": list(self.buffer.lines)[-40:],
+            "keywords": self.settings.keywords,
+            "sources": self.settings.sources,
+            "all_sources": ALL_SOURCES,
+            "limit_per_keyword": self.settings.limit_per_keyword,
         }
 
     # ------------------------------------------------------------------
-    def start(self, reason: str = "") -> bool:
-        """Démarre une collecte si aucune n'est en cours."""
+    def start(self, reason: str = "", overrides: dict | None = None) -> bool:
+        """Démarre une collecte si aucune n'est en cours.
+
+        `overrides` (keywords/sources/limit_per_keyword) remplace les
+        réglages courants pour cette collecte et les suivantes, afin que la
+        page de configuration se souvienne du dernier choix.
+        """
         with self._lock:
             if self.running:
                 return False
+            if overrides:
+                self.settings = replace(self.settings, **overrides)
             self.running = True
             self.started_at = time.time()
             self.finished_at = 0.0
@@ -118,7 +132,7 @@ class Collector:
 STATUS_PAGE = """<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Collecte en cours — money-finder</title>
+<title>Nouvelle collecte — money-finder</title>
 <style>
  :root{color-scheme:dark}
  body{margin:0;background:#0e1116;color:#e6edf3;
@@ -126,6 +140,7 @@ STATUS_PAGE = """<!doctype html>
    display:grid;place-items:center;min-height:100vh;padding:24px}
  .box{width:min(860px,100%);background:#161b22;border:1px solid #2a3340;
    border-radius:14px;padding:26px 30px}
+ .box + .box{margin-top:18px}
  h1{margin:0 0 4px;font-size:21px;display:flex;align-items:center;gap:10px}
  .dot{width:11px;height:11px;border-radius:50%;background:#4ea1ff;
    animation:pulse 1.2s ease-in-out infinite}
@@ -136,35 +151,119 @@ STATUS_PAGE = """<!doctype html>
  pre{background:#0d1117;border:1px solid #2a3340;border-radius:10px;
    padding:12px 14px;max-height:340px;overflow:auto;font-size:12.5px;
    color:#9aa7b4;white-space:pre-wrap}
- .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+ .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
  a.btn,button{background:#1c232d;color:#e6edf3;border:1px solid #2a3340;
    border-radius:9px;padding:9px 14px;font-size:14px;cursor:pointer;
    text-decoration:none;font-family:inherit}
  a.btn:hover,button:hover{background:#222b37}
+ button.primary{background:#1f6feb;border-color:#1f6feb;font-weight:600}
+ button.primary:hover{background:#3382ff}
  .err{color:#f85149}
-</style></head><body><div class="box">
-<h1><span class="dot" id="dot"></span><span id="title">Collecte en cours…</span></h1>
-<p id="sub">Les plateformes sont interrogées une par une. Cette page bascule
-sur le rapport dès qu'il est prêt.</p>
-<pre id="log">démarrage…</pre>
-<div class="row">
-  <a class="btn" id="prev" href="index.html" style="display:none">Voir le rapport précédent</a>
-  <button id="run">Relancer la collecte</button>
+ .field{margin-top:16px}
+ .field label{display:block;font-size:13px;color:#9aa7b4;margin-bottom:6px}
+ .chips{display:flex;flex-wrap:wrap;gap:8px}
+ .chip{display:flex;align-items:center;gap:6px;background:#1c232d;
+   border:1px solid #2a3340;border-radius:20px;padding:6px 12px;font-size:13.5px;
+   cursor:pointer;user-select:none}
+ .chip input{margin:0}
+ input[type=text],input[type=number]{background:#0d1117;border:1px solid #2a3340;
+   color:#e6edf3;border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit}
+</style></head><body>
+
+<div class="box" id="setupBox">
+  <h1>Nouvelle collecte</h1>
+  <p>Choisis les mots-clés et les plateformes à interroger, puis démarre la collecte.</p>
+  <div class="field">
+    <label>Mots-clés</label>
+    <div class="chips" id="kwChips"></div>
+    <div class="row">
+      <input type="text" id="kwNew" placeholder="ajouter un mot-clé…">
+      <button type="button" id="kwAdd">Ajouter</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>Plateformes</label>
+    <div class="chips" id="srcChips"></div>
+  </div>
+  <div class="field">
+    <label>Limite par mot-clé et par plateforme</label>
+    <input type="number" id="limit" min="1" style="width:110px">
+  </div>
+  <div class="row">
+    <button class="primary" id="start">Démarrer la collecte</button>
+    <a class="btn" id="prevFromSetup" href="index.html" style="display:none">Voir le rapport existant</a>
+  </div>
 </div>
+
+<div class="box" id="progressBox" style="display:none">
+  <h1><span class="dot" id="dot"></span><span id="title">Collecte en cours…</span></h1>
+  <p id="sub">Les plateformes sont interrogées une par une. Cette page bascule
+  sur le rapport dès qu'il est prêt.</p>
+  <pre id="log">démarrage…</pre>
+  <div class="row">
+    <a class="btn" id="prev" href="index.html" style="display:none">Voir le rapport précédent</a>
+  </div>
 </div>
+
 <script>
 let wasRunning = false;
+let initialized = false;
+let kwList = [];
+let srcList = [];
+
+function renderChips() {
+  const kwChips = document.getElementById('kwChips');
+  kwChips.innerHTML = '';
+  kwList.forEach((kw, i) => {
+    const label = document.createElement('label');
+    label.className = 'chip';
+    label.innerHTML = '<input type="checkbox" data-i="' + i + '"' +
+      (kw.checked ? ' checked' : '') + '> ' + kw.name;
+    label.querySelector('input').addEventListener('change', (e) => {
+      kwList[i].checked = e.target.checked;
+    });
+    kwChips.appendChild(label);
+  });
+
+  const srcChips = document.getElementById('srcChips');
+  srcChips.innerHTML = '';
+  srcList.forEach((src, i) => {
+    const label = document.createElement('label');
+    label.className = 'chip';
+    label.innerHTML = '<input type="checkbox" data-i="' + i + '"' +
+      (src.checked ? ' checked' : '') + '> ' + src.name;
+    label.querySelector('input').addEventListener('change', (e) => {
+      srcList[i].checked = e.target.checked;
+    });
+    srcChips.appendChild(label);
+  });
+}
+
 async function tick() {
   try {
     const s = await (await fetch('_status', {cache: 'no-store'})).json();
+    if (!initialized) {
+      kwList = s.keywords.map(k => ({name: k, checked: true}));
+      srcList = s.all_sources.map(src => ({name: src, checked: s.sources.includes(src)}));
+      document.getElementById('limit').value = s.limit_per_keyword;
+      renderChips();
+      initialized = true;
+    }
     document.getElementById('log').textContent = s.log.join('\\n') || 'démarrage…';
     document.getElementById('prev').style.display = s.has_report ? '' : 'none';
+    document.getElementById('prevFromSetup').style.display = s.has_report ? '' : 'none';
     const dot = document.getElementById('dot'), title = document.getElementById('title');
+    const setupBox = document.getElementById('setupBox');
+    const progressBox = document.getElementById('progressBox');
     if (s.running) {
       wasRunning = true;
+      setupBox.style.display = 'none';
+      progressBox.style.display = '';
       dot.className = 'dot';
       title.textContent = 'Collecte en cours… (' + s.elapsed + ' s)';
     } else {
+      setupBox.style.display = '';
+      progressBox.style.display = (s.runs > 0 || s.error) ? '' : 'none';
       dot.className = s.error ? 'dot err' : 'dot idle';
       title.textContent = s.error ? 'Collecte interrompue' : 'Aucune collecte en cours';
       if (s.error) {
@@ -176,10 +275,32 @@ async function tick() {
   } catch (e) { /* serveur qui redémarre : on réessaie */ }
   setTimeout(tick, 2000);
 }
-document.getElementById('run').addEventListener('click', async () => {
-  await fetch('_run', {method: 'POST'});
+
+document.getElementById('kwAdd').addEventListener('click', () => {
+  const input = document.getElementById('kwNew');
+  const val = input.value.trim();
+  if (val) { kwList.push({name: val, checked: true}); input.value = ''; renderChips(); }
+});
+document.getElementById('kwNew').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('kwAdd').click(); }
+});
+
+document.getElementById('start').addEventListener('click', async () => {
+  const keywords = kwList.filter(k => k.checked).map(k => k.name);
+  const sources = srcList.filter(s => s.checked).map(s => s.name);
+  const limit = parseInt(document.getElementById('limit').value, 10);
+  if (!keywords.length) { alert('Choisis au moins un mot-clé.'); return; }
+  if (!sources.length) { alert('Choisis au moins une plateforme.'); return; }
+  const body = {keywords, sources};
+  if (limit > 0) body.limit = limit;
+  await fetch('_run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
   wasRunning = true;
 });
+
 tick();
 </script></body></html>
 """
@@ -196,7 +317,10 @@ class ReportHandler(SimpleHTTPRequestHandler):
             self._send_json(self.collector.status())
             return
         if path == "/_run":                      # dépannage : /_run en GET aussi
-            self._trigger_run()
+            self._trigger_run({})
+            return
+        if path == "/_setup":
+            self._send_html(STATUS_PAGE)
             return
         if path == "/" and (self.collector.running or not self.collector.has_report):
             self._send_html(STATUS_PAGE)
@@ -205,13 +329,41 @@ class ReportHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path.split("?")[0] == "/_run":
-            self._trigger_run()
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            try:
+                body = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                body = {}
+            self._trigger_run(body if isinstance(body, dict) else {})
             return
         self.send_error(405, "Method Not Allowed")
 
     # ------------------------------------------------------------------
-    def _trigger_run(self) -> None:
-        started = self.collector.start(reason="demande depuis l'interface")
+    def _trigger_run(self, body: dict) -> None:
+        overrides: dict = {}
+
+        keywords = body.get("keywords")
+        if isinstance(keywords, list):
+            cleaned = [k.strip() for k in keywords if isinstance(k, str) and k.strip()]
+            if cleaned:
+                overrides["keywords"] = cleaned
+
+        sources = body.get("sources")
+        if isinstance(sources, list):
+            cleaned_sources = [
+                s.strip().lower() for s in sources
+                if isinstance(s, str) and s.strip().lower() in ALL_SOURCES
+            ]
+            if cleaned_sources:
+                overrides["sources"] = cleaned_sources
+
+        limit = body.get("limit")
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
+            overrides["limit_per_keyword"] = limit
+
+        started = self.collector.start(reason="demande depuis l'interface",
+                                       overrides=overrides or None)
         self._send_json({"started": started, **self.collector.status()})
 
     def _send_json(self, payload: dict) -> None:
@@ -236,11 +388,9 @@ class ReportHandler(SimpleHTTPRequestHandler):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="money-finder-web",
-        description="Sert le rapport et lance la collecte automatiquement.")
+        description="Sert le rapport et permet de démarrer une collecte depuis la page web.")
     parser.add_argument("-p", "--port", type=int, default=int(os.getenv("WEB_PORT", "8081")))
     parser.add_argument("-d", "--directory", default="")
-    parser.add_argument("--no-auto", action="store_true",
-                        help="ne pas lancer la collecte au démarrage")
     parser.add_argument("--refresh-hours", type=float,
                         default=float(os.getenv("REFRESH_HOURS", "0") or 0),
                         help="relancer la collecte toutes les N heures (0 = jamais)")
@@ -265,10 +415,11 @@ def main(argv: list[str] | None = None) -> int:
           f"(dossier {settings.output_dir.resolve()})", flush=True)
 
     if collector.has_report:
-        print("Rapport déjà présent : « Relancer la collecte » pour le mettre à jour.",
+        print("Rapport déjà présent : « Relancer » pour choisir de nouveaux mots-clés.",
               flush=True)
-    elif not args.no_auto:
-        collector.start(reason="aucun rapport présent au démarrage")
+    else:
+        print("Aucun rapport pour l'instant : choisis tes mots-clés sur la page "
+              "d'accueil et clique sur « Démarrer la collecte ».", flush=True)
     collector.schedule_refresh()
 
     try:

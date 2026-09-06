@@ -21,15 +21,18 @@ cp .env.example .env                  # puis colle ton token Thingiverse dedans
 docker compose up -d --build web      # → http://localhost:8081
 ```
 
-C'est tout : au premier démarrage, le service `web` **lance la collecte tout
-seul**. La page affiche l'avancement en direct (journal des plateformes
-interrogées) et bascule sur le rapport dès qu'il est prêt.
+C'est tout : au premier démarrage, aucune collecte n'est lancée. La page
+affiche un formulaire pour choisir les **mots-clés** et les **plateformes**,
+avec un bouton **« Démarrer la collecte »**. Une fois lancée, la même page
+affiche l'avancement en direct (journal des plateformes interrogées) et
+bascule sur le rapport dès qu'il est prêt.
 
 Le rapport atterrit dans `./output/` (monté en volume, donc conservé entre les
 runs). Ensuite :
 
-- bouton **« Relancer la collecte »** sur la page d'avancement, ou
-  `curl -X POST localhost:8081/_run` ;
+- bouton **« Relancer »** sur le rapport pour revenir au formulaire et
+  choisir d'autres mots-clés/plateformes, ou
+  `curl -X POST localhost:8081/_run -d '{"keywords":["fidget toys"],"sources":["printables"]}'` ;
 - `REFRESH_HOURS=12` dans `.env` pour une collecte automatique toutes les 12 h ;
 - `WEB_PORT=9000` pour changer le port côté hôte.
 
