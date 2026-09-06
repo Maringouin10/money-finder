@@ -1,13 +1,17 @@
 services:
-  # Lance la collecte puis écrit le rapport dans ./output
+  # Collecte en une passe puis écrit le rapport dans ./output.
+  # Sous profil « cli » : `docker compose up` ne le démarre PAS (sinon il
+  # scraperait au démarrage, en concurrence avec le service web sur le même
+  # dossier). Il reste lançable à la demande, le profil est activé tout seul :
+  #   docker compose run --rm scraper -k "infinity cube" -l 100
   scraper:
     build: .
     image: money-finder
+    profiles: ["cli"]
     env_file:
       - .env
     volumes:
       - ./output:/app/output
-    # surchargeable : docker compose run --rm scraper -k "infinity cube" -l 100
     command: ["--commercial-only"]
 
   # Sert le rapport sur http://localhost:8081. Au démarrage, aucune collecte

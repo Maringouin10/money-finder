@@ -38,7 +38,10 @@ runs) et reste accessible sur <http://localhost:8081/index.html>. Ensuite :
 - `WEB_PORT=9000` pour changer le port côté hôte.
 
 Le service `scraper` reste disponible pour lancer une collecte à la demande
-avec des options précises (voir plus bas).
+avec des options précises (voir plus bas). Il est sous le profil `cli` : il ne
+démarre donc **pas** avec `docker compose up` (sinon il scraperait au
+démarrage, en concurrence avec le service `web` sur le même `./output`), mais
+`docker compose run --rm scraper …` l'active tout seul.
 
 ### Voir le rendu sans clé ni réseau
 
