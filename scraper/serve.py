@@ -423,10 +423,9 @@ class ReportHandler(SimpleHTTPRequestHandler):
         if path == "/_run":                      # dépannage : /_run en GET aussi
             self._trigger_run({})
             return
-        if path == "/_setup":
-            self._send_html(STATUS_PAGE)
-            return
-        if path == "/" and (self.collector.running or not self.collector.has_report):
+        if path in ("/", "/_setup"):
+            # La racine montre toujours le formulaire (ou l'avancement si une
+            # collecte tourne) : le rapport reste sur /index.html.
             self._send_html(STATUS_PAGE)
             return
         super().do_GET()
@@ -481,9 +480,14 @@ class ReportHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def end_headers(self) -> None:
+        # Vaut aussi pour assets/app.js : un script en cache garderait
+        # l'ancien comportement du bouton « Relancer ».
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
     def log_message(self, fmt: str, *args: object) -> None:
         log.debug("[web] %s", fmt % args)
@@ -518,12 +522,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Rapport servi sur http://localhost:{args.port} "
           f"(dossier {settings.output_dir.resolve()})", flush=True)
 
+    print("Choisis tes mots-clés sur la page d'accueil puis clique sur "
+          "« Démarrer la collecte ».", flush=True)
     if collector.has_report:
-        print("Rapport déjà présent : « Relancer » pour choisir de nouveaux mots-clés.",
+        print(f"Rapport précédent disponible : http://localhost:{args.port}/index.html",
               flush=True)
-    else:
-        print("Aucun rapport pour l'instant : choisis tes mots-clés sur la page "
-              "d'accueil et clique sur « Démarrer la collecte ».", flush=True)
     collector.schedule_refresh()
 
     try:

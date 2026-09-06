@@ -21,14 +21,15 @@ cp .env.example .env                  # puis colle ton token Thingiverse dedans
 docker compose up -d --build web      # → http://localhost:8081
 ```
 
-C'est tout : au premier démarrage, aucune collecte n'est lancée. La page
-affiche un formulaire pour choisir les **mots-clés** et les **plateformes**,
-avec un bouton **« Démarrer la collecte »**. Une fois lancée, la même page
-affiche l'avancement en direct (journal des plateformes interrogées) et
-bascule sur le rapport dès qu'il est prêt.
+C'est tout : aucune collecte n'est lancée au démarrage. La page d'accueil
+affiche **toujours** un formulaire pour choisir les **mots-clés** et les
+**plateformes**, avec un bouton **« Démarrer la collecte »**. Une fois lancée,
+la même page montre les modèles trouvés **au fur et à mesure** (vignette,
+titre, plateforme, verdict de licence) et bascule sur le rapport complet dès
+qu'il est prêt.
 
 Le rapport atterrit dans `./output/` (monté en volume, donc conservé entre les
-runs). Ensuite :
+runs) et reste accessible sur <http://localhost:8081/index.html>. Ensuite :
 
 - bouton **« Relancer »** sur le rapport pour revenir au formulaire et
   choisir d'autres mots-clés/plateformes, ou
