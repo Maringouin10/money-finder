@@ -41,22 +41,8 @@
     apply();
   }
 
-  // bouton « Relancer » : ouvre la page de configuration, mais ne marche
-  // que servi par scraper.serve (pas depuis un fichier local)
-  const rerun = document.getElementById('rerun');
-  if (rerun) {
-    rerun.addEventListener('click', async (e) => {
-      e.preventDefault();
-      try {
-        const resp = await fetch('_status', { cache: 'no-store' });
-        if (!resp.ok) throw new Error(resp.status);
-        location.href = '_setup';
-      } catch (err) {
-        alert("Relance impossible depuis un fichier local.\n"
-              + "Ouvre le rapport via le service web : http://localhost:8081");
-      }
-    });
-  }
+  // « Relancer » est un simple lien vers _setup : aucun JS, donc rien à
+  // intercepter (un app.js gardé en cache ne peut pas relancer tout seul).
 
   // page « par famille » : filtre du sommaire
   const qg = document.getElementById('q-group');

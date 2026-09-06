@@ -6,11 +6,13 @@ collecte ». Une fois lancée, la même page affiche l'avancement en direct et
 bascule sur le rapport dès qu'il est prêt.
 
 Endpoints :
-  GET  /            rapport, ou page de configuration/avancement sinon
+  GET  /            formulaire, ou avancement si une collecte tourne
+  GET  /_setup      idem, quel que soit l'état du rapport
   GET  /index.html  toujours le rapport tel quel (même pendant une collecte)
-  GET  /_status     état JSON {running, done, has_report, log, ...}
-  POST /_run        démarre une collecte (ignorée si une est déjà en cours),
-                     avec un corps JSON optionnel {keywords, sources, limit}
+  GET  /_status     état JSON {running, done, has_report, log, models, ...}
+  POST /_run        démarre une collecte (ignorée si une est déjà en cours).
+                     Le corps JSON {keywords, sources, limit} est obligatoire :
+                     sans mots-clés ni plateformes, rien ne démarre.
 """
 
 from __future__ import annotations
@@ -465,8 +467,19 @@ class ReportHandler(SimpleHTTPRequestHandler):
         if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
             overrides["limit_per_keyword"] = limit
 
+        # Rien ne démarre sans choix explicite : une page de rapport gardée en
+        # cache appelle /_run sans corps, et relancerait sinon toute seule.
+        if "keywords" not in overrides and "sources" not in overrides:
+            self._send_json({
+                "started": False,
+                "needs_setup": True,
+                "message": "Choisis des mots-clés et des plateformes sur /_setup.",
+                **self.collector.status(),
+            })
+            return
+
         started = self.collector.start(reason="demande depuis l'interface",
-                                       overrides=overrides or None)
+                                       overrides=overrides)
         self._send_json({"started": started, **self.collector.status()})
 
     def _send_json(self, payload: dict) -> None:
