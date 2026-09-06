@@ -55,6 +55,8 @@ class Collector:
         self.buffer = LogBuffer()
         logging.getLogger("money-finder").addHandler(self.buffer)
         self._lock = threading.Lock()
+        self._found_lock = threading.Lock()
+        self.found: dict[str, dict] = {}
         self.running = False
         self.started_at = 0.0
         self.finished_at = 0.0
@@ -67,6 +69,8 @@ class Collector:
         return (self.settings.output_dir / "index.html").exists()
 
     def status(self) -> dict:
+        with self._found_lock:
+            found = list(self.found.values())
         return {
             "running": self.running,
             "has_report": self.has_report,
@@ -79,7 +83,25 @@ class Collector:
             "sources": self.settings.sources,
             "all_sources": ALL_SOURCES,
             "limit_per_keyword": self.settings.limit_per_keyword,
+            "found": len(found),
+            "models": found,
         }
+
+    def _on_model(self, model) -> None:
+        """Callback appelé par le pipeline dès qu'un modèle est trouvé/enrichi."""
+        from .models import Model  # import tardif : évite un cycle
+        assert isinstance(model, Model)
+        with self._found_lock:
+            self.found[model.uid] = {
+                "uid": model.uid,
+                "title": model.title,
+                "source": model.source,
+                "source_label": model.source_label,
+                "url": model.url,
+                "image": model.image,
+                "creator": model.creator,
+                "sellable": model.license.sellable if model.license else None,
+            }
 
     # ------------------------------------------------------------------
     def start(self, reason: str = "", overrides: dict | None = None) -> bool:
@@ -98,6 +120,8 @@ class Collector:
             self.started_at = time.time()
             self.finished_at = 0.0
             self.error = ""
+        with self._found_lock:
+            self.found = {}
         threading.Thread(target=self._run, args=(reason,), daemon=True).start()
         return True
 
@@ -105,7 +129,7 @@ class Collector:
         from .pipeline import run                       # import tardif : évite un cycle
         log.info("collecte lancée%s", f" ({reason})" if reason else "")
         try:
-            run(self.settings)
+            run(self.settings, on_model=self._on_model)
             log.info("collecte terminée, rapport disponible")
         except Exception as exc:                        # noqa: BLE001 - le serveur doit survivre
             self.error = f"{exc.__class__.__name__}: {exc}"
@@ -168,6 +192,25 @@ STATUS_PAGE = """<!doctype html>
  .chip input{margin:0}
  input[type=text],input[type=number]{background:#0d1117;border:1px solid #2a3340;
    color:#e6edf3;border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit}
+ .count{color:#9aa7b4;font-size:13px;margin:10px 0 0}
+ .live-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+   gap:10px;margin-top:10px;max-height:460px;overflow-y:auto;padding-right:2px}
+ .live-card{background:#0d1117;border:1px solid #2a3340;border-radius:10px;
+   overflow:hidden;display:flex;flex-direction:column;text-decoration:none;
+   color:inherit}
+ .live-card img{width:100%;height:90px;object-fit:cover;background:#1c232d;display:block}
+ .live-card .body{padding:8px}
+ .live-card .t{display:block;font-size:12.5px;font-weight:600;color:#e6edf3;
+   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .live-card .badges{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+ .badge{border-radius:6px;padding:2px 6px;font-size:10.5px}
+ .badge.src{background:#1c232d;border:1px solid #2a3340;color:#9aa7b4}
+ .sell-yes{background:#0d3321;color:#4fd88a}
+ .sell-conditions{background:#3a2f0d;color:#e6c14e}
+ .sell-no{background:#3a1414;color:#f0807d}
+ .sell-unknown,.sell-null{background:#1c232d;color:#9aa7b4}
+ details.logbox{margin-top:14px}
+ details.logbox summary{cursor:pointer;color:#9aa7b4;font-size:13px}
 </style></head><body>
 
 <div class="box" id="setupBox">
@@ -197,9 +240,13 @@ STATUS_PAGE = """<!doctype html>
 
 <div class="box" id="progressBox" style="display:none">
   <h1><span class="dot" id="dot"></span><span id="title">Collecte en cours…</span></h1>
-  <p id="sub">Les plateformes sont interrogées une par une. Cette page bascule
-  sur le rapport dès qu'il est prêt.</p>
-  <pre id="log">démarrage…</pre>
+  <p id="sub">Les modèles apparaissent ci-dessous au fur et à mesure qu'ils sont trouvés.</p>
+  <p class="count" id="count">0 modèle(s) trouvé(s)</p>
+  <div class="live-grid" id="liveGrid"></div>
+  <details class="logbox">
+    <summary>Journal détaillé</summary>
+    <pre id="log">démarrage…</pre>
+  </details>
   <div class="row">
     <a class="btn" id="prev" href="index.html" style="display:none">Voir le rapport précédent</a>
   </div>
@@ -239,6 +286,56 @@ function renderChips() {
   });
 }
 
+const liveCards = new Map();   // uid -> {el, img, t, src, sell}
+let sawRunning = false;
+
+const SELL_LABELS = {yes: 'Vendable', conditions: 'Sous conditions',
+  no: 'Non vendable', unknown: 'Inconnu'};
+
+function upsertCard(m) {
+  let refs = liveCards.get(m.uid);
+  if (!refs) {
+    const el = document.createElement('a');
+    el.className = 'live-card';
+    el.target = '_blank';
+    el.rel = 'noopener';
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+    const body = document.createElement('div');
+    body.className = 'body';
+    const t = document.createElement('span');
+    t.className = 't';
+    const badges = document.createElement('div');
+    badges.className = 'badges';
+    const src = document.createElement('span');
+    src.className = 'badge src';
+    const sell = document.createElement('span');
+    sell.className = 'badge';
+    badges.appendChild(src);
+    badges.appendChild(sell);
+    body.appendChild(t);
+    body.appendChild(badges);
+    el.appendChild(img);
+    el.appendChild(body);
+    refs = {el, img, t, src, sell};
+    liveCards.set(m.uid, refs);
+    document.getElementById('liveGrid').prepend(el);
+  }
+  refs.el.href = m.url || '#';
+  const image = m.image || '';
+  if (refs.img.src !== image) refs.img.src = image;
+  refs.t.textContent = m.title || '';
+  refs.src.textContent = m.source_label || '';
+  refs.sell.className = 'badge sell-' + (m.sellable || 'unknown');
+  refs.sell.textContent = SELL_LABELS[m.sellable] || 'Inconnu';
+}
+
+function resetLiveGrid() {
+  liveCards.clear();
+  document.getElementById('liveGrid').innerHTML = '';
+}
+
 async function tick() {
   try {
     const s = await (await fetch('_status', {cache: 'no-store'})).json();
@@ -249,6 +346,10 @@ async function tick() {
       renderChips();
       initialized = true;
     }
+    if (s.running && !sawRunning) { resetLiveGrid(); }
+    sawRunning = s.running;
+    (s.models || []).forEach(upsertCard);
+    document.getElementById('count').textContent = (s.found || 0) + ' modèle(s) trouvé(s)';
     document.getElementById('log').textContent = s.log.join('\\n') || 'démarrage…';
     document.getElementById('prev').style.display = s.has_report ? '' : 'none';
     document.getElementById('prevFromSetup').style.display = s.has_report ? '' : 'none';
@@ -261,14 +362,17 @@ async function tick() {
       progressBox.style.display = '';
       dot.className = 'dot';
       title.textContent = 'Collecte en cours… (' + s.elapsed + ' s)';
+      document.getElementById('sub').className = '';
+      document.getElementById('sub').textContent =
+        "Les modèles apparaissent ci-dessous au fur et à mesure qu'ils sont trouvés.";
     } else {
       setupBox.style.display = '';
       progressBox.style.display = (s.runs > 0 || s.error) ? '' : 'none';
       dot.className = s.error ? 'dot err' : 'dot idle';
       title.textContent = s.error ? 'Collecte interrompue' : 'Aucune collecte en cours';
       if (s.error) {
-        document.getElementById('sub').innerHTML =
-          '<span class="err">' + s.error + '</span>';
+        document.getElementById('sub').textContent = s.error;
+        document.getElementById('sub').className = 'err';
       }
       if (wasRunning && s.has_report) { location.href = 'index.html'; return; }
     }

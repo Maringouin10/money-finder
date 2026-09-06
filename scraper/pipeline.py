@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Callable
 
 from .config import Settings
 from .grouping import discover_groups, tag_duplicates
@@ -15,8 +16,12 @@ from .sources import REGISTRY
 
 log = logging.getLogger("money-finder")
 
+OnModel = Callable[[Model], None]
 
-def collect(settings: Settings, http: Http) -> tuple[list[Model], list[str]]:
+
+def collect(
+    settings: Settings, http: Http, on_model: OnModel | None = None,
+) -> tuple[list[Model], list[str]]:
     models: dict[str, Model] = {}
     warnings: list[str] = []
 
@@ -51,8 +56,10 @@ def collect(settings: Settings, http: Http) -> tuple[list[Model], list[str]]:
                 warnings.append(f"{source.label} · « {keyword} » : {exc}")
                 continue
             for model in results:
-                if model.source_id and model.title:
-                    models.setdefault(model.uid, model)
+                if model.source_id and model.title and model.uid not in models:
+                    models[model.uid] = model
+                    if on_model:
+                        on_model(model)
             log.info("[%s] « %s » : %s résultats", name, keyword, len(results))
 
         new_models = [m for m in models.values() if m.source == name]
@@ -62,6 +69,9 @@ def collect(settings: Settings, http: Http) -> tuple[list[Model], list[str]]:
                     source.enrich(model)
                 except Exception as exc:  # noqa: BLE001
                     log.debug("[%s] enrichissement %s échoué : %s", name, model.source_id, exc)
+                else:
+                    if on_model:
+                        on_model(model)
                 if index % 25 == 0:
                     log.info("[%s] détails récupérés : %s/%s", name, index, len(new_models))
         log.info("[%s] terminé : %s modèles", name, len(models) - found_before)
@@ -88,18 +98,21 @@ def filter_models(models: list[Model], settings: Settings) -> list[Model]:
     return kept
 
 
-def run(settings: Settings) -> dict[str, Path]:
+def run(settings: Settings, on_model: OnModel | None = None) -> dict[str, Path]:
     if settings.demo:
         from .demo_data import demo_models
         models, warnings = demo_models(), []
         log.info("mode démonstration : %s modèles d'exemple", len(models))
+        if on_model:
+            for model in models:
+                on_model(model)
         http = None
     else:
         http = Http(user_agent=settings.user_agent, timeout=settings.timeout,
                     delay=settings.delay, max_retries=settings.max_retries,
                     debug=settings.debug, retry_base=settings.retry_base,
                     max_delay=settings.max_delay)
-        models, warnings = collect(settings, http)
+        models, warnings = collect(settings, http, on_model=on_model)
 
     models = filter_models(models, settings)
     models.sort(key=lambda m: (-m.downloads, -m.likes, m.title.lower()))
